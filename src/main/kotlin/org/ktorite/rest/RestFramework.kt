@@ -193,9 +193,10 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                 }
 
                 put("$basePath/{id}/") {
-                    call.respondRedirect("../${call.parameters["id"]}")
+                    call.response.header(HttpHeaders.Location, "../${call.parameters["id"]}")
+                    call.respondText("", status = HttpStatusCode.TemporaryRedirect)
                 }
-
+                
                 put("$basePath/{id}") {
                     call.restRespond {
                         val pkValues = call.parsePkValues(pkCols) ?: return@restRespond
@@ -204,9 +205,10 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                 }
 
                 patch("$basePath/{id}/") {
-                    call.respondRedirect("../${call.parameters["id"]}")
+                    call.response.header(HttpHeaders.Location, "../${call.parameters["id"]}")
+                    call.respondText("", status = HttpStatusCode.TemporaryRedirect)
                 }
-
+                
                 patch("$basePath/{id}") {
                     call.restRespond {
                         val pkValues = call.parsePkValues(pkCols) ?: return@restRespond
@@ -215,9 +217,10 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                 }
 
                 delete("$basePath/{id}/") {
-                    call.respondRedirect("../${call.parameters["id"]}")
+                    call.response.header(HttpHeaders.Location, "../${call.parameters["id"]}")
+                    call.respondText("", status = HttpStatusCode.TemporaryRedirect)
                 }
-
+                
                 delete("$basePath/{id}") {
                     call.restRespond {
                         val pkValues = call.parsePkValues(pkCols) ?: return@restRespond
