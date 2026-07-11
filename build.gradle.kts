@@ -31,5 +31,5 @@ publishing {
 }
 
 dependencies {
-    api("com.github.ktorite:ktorite-core:1.0.1")
+    api("com.github.ktorite:ktorite-core:1.0.2")
 }
