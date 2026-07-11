@@ -117,6 +117,10 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                 call.respondRedirect("$basePath/")
             }
 
+            get("$basePath/{id}/") {
+                call.respondRedirect("../${call.parameters["id"]}")
+            }
+
             get("$basePath/{id}") {
                 call.restRespond {
                     val pkValues = call.parsePkValues(pkCols) ?: return@restRespond
@@ -188,6 +192,10 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                     }
                 }
 
+                put("$basePath/{id}/") {
+                    call.respondRedirect("../${call.parameters["id"]}")
+                }
+
                 put("$basePath/{id}") {
                     call.restRespond {
                         val pkValues = call.parsePkValues(pkCols) ?: return@restRespond
@@ -195,11 +203,19 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                     }
                 }
 
+                patch("$basePath/{id}/") {
+                    call.respondRedirect("../${call.parameters["id"]}")
+                }
+
                 patch("$basePath/{id}") {
                     call.restRespond {
                         val pkValues = call.parsePkValues(pkCols) ?: return@restRespond
                         updateEntity(pkValues)
                     }
+                }
+
+                delete("$basePath/{id}/") {
+                    call.respondRedirect("../${call.parameters["id"]}")
                 }
 
                 delete("$basePath/{id}") {
