@@ -1,6 +1,7 @@
 package org.ktorite.rest
 
 import kotlinx.serialization.json.*
+import org.jetbrains.exposed.v1.core.*
 import java.util.UUID
 
 /**
@@ -138,3 +139,30 @@ class EnumSerializer(private val enumClass: Class<*>) : ColumnSerializer {
 private fun reflectValueOf(enumClass: Class<*>, raw: String): Any? = try {
     enumClass.getMethod("valueOf", String::class.java).invoke(null, raw)
 } catch (_: Exception) { null }
+
+private val instantColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.InstantColumnType") }.getOrNull() }
+private val localDateColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.LocalDateColumnType") }.getOrNull() }
+private val localDateTimeColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.LocalDateTimeColumnType") }.getOrNull() }
+
+internal fun serializerFor(col: Column<*>, customSerializers: Map<Class<*>, ColumnSerializer> = emptyMap()): ColumnSerializer {
+    val ct = col.columnType
+    val exact = customSerializers[ct::class.java]
+    if (exact != null) return exact
+    customSerializers.entries.firstOrNull { (type, _) -> type.isInstance(ct) }?.value?.let { return it } // match parent type if exact do not return.
+    return when {
+        ct is IntegerColumnType || ct is AutoIncColumnType<*> -> IntSerializer
+        ct is LongColumnType -> LongSerializer
+        ct is ShortColumnType -> ShortSerializer
+        ct is VarCharColumnType || ct is TextColumnType -> StringSerializer
+        ct is BooleanColumnType -> BooleanSerializer
+        ct is DoubleColumnType -> DoubleSerializer
+        ct is FloatColumnType -> FloatSerializer
+        ct is DecimalColumnType -> BigDecimalSerializer
+        ct is BasicUuidColumnType<*> -> UuidSerializer
+        ct is EnumerationColumnType<*> -> EnumSerializer(ct.klass.java)
+        instantColumnTypeClass?.isInstance(ct) == true -> InstantSerializer
+        localDateColumnTypeClass?.isInstance(ct) == true -> LocalDateSerializer
+        localDateTimeColumnTypeClass?.isInstance(ct) == true -> LocalDateTimeSerializer
+        else -> error("No serializer registered for ${ct::class.qualifiedName}")
+    }
+}
