@@ -2,6 +2,8 @@ package org.ktorite.rest
 
 import io.ktor.server.application.*
 import org.jetbrains.exposed.v1.core.*
+import org.jetbrains.exposed.v1.core.ops.SingleValueInListOp
+import org.jetbrains.exposed.v1.jdbc.*
 
 internal enum class FilterOp { EQ, NE, GT, GTE, LT, LTE, CONTAINS, STARTSWITH, ENDSWITH, IN }
 
@@ -110,4 +112,56 @@ internal fun parseQuery(call: ApplicationCall, columnMap: Map<String, Column<*>>
     }
 
     return ParsedQuery(filters, sort.distinctBy { it.first }, fields, page, perPage, errors)
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun lit(col: Column<*>, value: Any): Expression<*> =
+    LiteralOp(col.columnType as IColumnType<Any>, value)
+
+private const val LIKE_ESCAPE = '\\'
+
+private fun String.escapeLike(): String = replace(LIKE_ESCAPE.toString(), "${LIKE_ESCAPE}${LIKE_ESCAPE}")
+    .replace("%", "${LIKE_ESCAPE}%")
+    .replace("_", "${LIKE_ESCAPE}_")
+
+@Suppress("UNCHECKED_CAST")
+internal fun Query.withFilters(filters: List<Filter>, columnMap: Map<String, Column<*>>, customSerializers: Map<Class<*>, ColumnSerializer> = emptyMap()): Query {
+    var q = this
+    filters.forEach { filter ->
+        val col = columnMap[filter.field] ?: return@forEach
+        val serializer = serializerFor(col, customSerializers)
+        val value: Any = serializer.fromString(filter.value) ?: filter.value
+        val escaped = filter.value.escapeLike()
+        val condition: Op<Boolean> = when (filter.op) {
+            FilterOp.EQ -> EqOp(col, lit(col, value))
+            FilterOp.NE -> NeqOp(col, lit(col, value))
+            FilterOp.GT -> GreaterOp(col, lit(col, value))
+            FilterOp.GTE -> GreaterEqOp(col, lit(col, value))
+            FilterOp.LT -> LessOp(col, lit(col, value))
+            FilterOp.LTE -> LessEqOp(col, lit(col, value))
+            FilterOp.CONTAINS -> LikeEscapeOp(col, lit(col, "%$escaped%"), true, LIKE_ESCAPE)
+            FilterOp.STARTSWITH -> LikeEscapeOp(col, lit(col, "$escaped%"), true, LIKE_ESCAPE)
+            FilterOp.ENDSWITH -> LikeEscapeOp(col, lit(col, "%$escaped"), true, LIKE_ESCAPE)
+            FilterOp.IN -> {
+                if (filter.value.isBlank()) return@forEach
+                val items = filter.value.split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .map { serializer.fromString(it) ?: it }
+                SingleValueInListOp(col as ExpressionWithColumnType<Any?>, items as Iterable<Any?>, true)
+            }
+        }
+        q = q.andWhere { condition }
+    }
+    return q
+}
+
+internal fun Query.withSort(sort: List<Pair<String, Boolean>>, columnMap: Map<String, Column<*>>): Query {
+    var q = this
+    sort.forEach { (field, asc) ->
+        val col = columnMap[field] ?: return@forEach
+        q = q.orderBy(col, if (asc) SortOrder.ASC else SortOrder.DESC)
+    }
+    return q
 }
