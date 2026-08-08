@@ -29,11 +29,8 @@ jobs:
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
-        with:
-          build-root-directory: ktorite-rest-framework
 
       - name: Generate Dokka HTML docs
-        working-directory: ktorite-rest-framework
         run: ./gradlew dokkaHtml --no-daemon
 
       - name: Configure GitHub Pages
@@ -42,7 +39,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ktorite-rest-framework/build/dokka/html
+          path: build/dokka/html
 
       - name: Deploy to GitHub Pages
         id: deployment
@@ -59,8 +56,5 @@ jobs:
           java-version: "17"
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
-        with:
-          build-root-directory: ktorite-rest-framework
       - name: Verify KDocs links
-        working-directory: ktorite-rest-framework
         run: ./gradlew dokkaJavadoc --no-daemon
