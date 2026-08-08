@@ -2,6 +2,7 @@ package org.ktorite.rest
 
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.*
+import org.jetbrains.exposed.v1.core.dao.id.EntityID
 import java.util.UUID
 
 /**
@@ -68,6 +69,20 @@ object FloatSerializer : ColumnSerializer {
         if (value == null) JsonNull else JsonPrimitive(value as Float)
     override fun fromJson(element: JsonElement): Any? = element.jsonPrimitive.content.toFloatOrNull()
     override fun fromString(raw: String): Any? = raw.toFloatOrNull()
+}
+
+object ByteSerializer : ColumnSerializer {
+    override fun toJson(value: Any?): JsonElement =
+        if (value == null) JsonNull else JsonPrimitive((value as Byte).toInt())
+    override fun fromJson(element: JsonElement): Any? = element.jsonPrimitive.content.toByteOrNull()
+    override fun fromString(raw: String): Any? = raw.toByteOrNull()
+}
+
+object CharSerializer : ColumnSerializer {
+    override fun toJson(value: Any?): JsonElement =
+        if (value == null) JsonNull else JsonPrimitive(value.toString())
+    override fun fromJson(element: JsonElement): Any? = element.jsonPrimitive.contentOrNull?.firstOrNull()
+    override fun fromString(raw: String): Any? = raw.firstOrNull()
 }
 
 object BigDecimalSerializer : ColumnSerializer {
@@ -140,9 +155,9 @@ private fun reflectValueOf(enumClass: Class<*>, raw: String): Any? = try {
     enumClass.getMethod("valueOf", String::class.java).invoke(null, raw)
 } catch (_: Exception) { null }
 
-private val instantColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.InstantColumnType") }.getOrNull() }
-private val localDateColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.LocalDateColumnType") }.getOrNull() }
-private val localDateTimeColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.LocalDateTimeColumnType") }.getOrNull() }
+internal val instantColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.InstantColumnType") }.getOrNull() }
+internal val localDateColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.LocalDateColumnType") }.getOrNull() }
+internal val localDateTimeColumnTypeClass by lazy { runCatching { Class.forName("org.jetbrains.exposed.v1.core.datetime.LocalDateTimeColumnType") }.getOrNull() }
 
 internal fun serializerFor(col: Column<*>, customSerializers: Map<Class<*>, ColumnSerializer> = emptyMap()): ColumnSerializer {
     val ct = col.columnType
@@ -153,13 +168,32 @@ internal fun serializerFor(col: Column<*>, customSerializers: Map<Class<*>, Colu
         ct is IntegerColumnType || ct is AutoIncColumnType<*> -> IntSerializer
         ct is LongColumnType -> LongSerializer
         ct is ShortColumnType -> ShortSerializer
+        ct is ByteColumnType -> ByteSerializer
         ct is VarCharColumnType || ct is TextColumnType -> StringSerializer
+        ct is CharacterColumnType -> CharSerializer
         ct is BooleanColumnType -> BooleanSerializer
         ct is DoubleColumnType -> DoubleSerializer
         ct is FloatColumnType -> FloatSerializer
         ct is DecimalColumnType -> BigDecimalSerializer
-        ct is BasicUuidColumnType<*> -> UuidSerializer
+        ct is BasicUuidColumnType<*> || ct is UuidColumnType -> UuidSerializer
         ct is EnumerationColumnType<*> -> EnumSerializer(ct.klass.java)
+        ct is EnumerationNameColumnType<*> -> EnumSerializer(ct.klass.java)
+        ct is EntityIDColumnType<*> -> {
+            val innerCol = ct.idColumn
+            val innerSerializer = serializerFor(innerCol, customSerializers)
+            object : ColumnSerializer {
+                override fun toJson(value: Any?): JsonElement {
+                    val unwrapped = (value as? EntityID<*>)?.value ?: value
+                    return innerSerializer.toJson(unwrapped)
+                }
+                override fun fromJson(element: JsonElement): Any? = innerSerializer.fromJson(element)
+                override fun fromString(raw: String): Any? = innerSerializer.fromString(raw)
+            }
+        }
+        ct is UByteColumnType -> ByteSerializer
+        ct is UShortColumnType -> ShortSerializer
+        ct is UIntegerColumnType -> IntSerializer
+        ct is ULongColumnType -> LongSerializer
         instantColumnTypeClass?.isInstance(ct) == true -> InstantSerializer
         localDateColumnTypeClass?.isInstance(ct) == true -> LocalDateSerializer
         localDateTimeColumnTypeClass?.isInstance(ct) == true -> LocalDateTimeSerializer
