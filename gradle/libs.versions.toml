@@ -7,6 +7,7 @@ logback-version = "1.5.34"
 mongo-version = "5.7.0"
 postgres-version = "42.7.11"
 ktor-plugins-version = "2.3.0"
+dokka-version = "2.0.0"
 
 cache-version = "0.63.3"
 hikari-version = "7.0.2"
@@ -67,3 +68,4 @@ bcrypt = { module = "at.favre.lib:bcrypt", version.ref = "bcrypt-version" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin-version" }
 ktor = { id = "io.ktor.plugin", version.ref = "ktor-version" }
 kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin-version" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka-version" }
