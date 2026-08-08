@@ -11,6 +11,10 @@ import org.jetbrains.exposed.v1.jdbc.*
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.ktorite.config.KtoriteConfig
 
+/**
+ * Enables the auto-generated REST API for the models registered on this
+ * [KtoriteConfig] and applies [block] to configure it.
+ */
 fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
     val restConfig = RestConfig(registeredModels).apply(block)
     val registrations = restConfig.registrations
@@ -22,7 +26,9 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
         transaction(this@restFramework.db ?: error("No database configured")) { block() }
 
     suspend fun ApplicationCall.restRespond(block: suspend ApplicationCall.() -> Unit) {
-        try { block() } catch (e: Exception) {
+        try { block() } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
             application.log.error("Unhandled exception in REST handler", e)
             respondError("Internal server error", HttpStatusCode.InternalServerError)
         }
@@ -66,7 +72,19 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
         return BodyResult(errors, values)
     }
 
-    routing {
+    // val openApiConfig = restConfig.openApiConfig
+    //
+    // routing {
+    //     if (openApiConfig != null) {
+    //         get(openApiConfig.path) {
+    //             val spec = generateOpenApiSpec(registrations)
+    //             call.respondText(Json.encodeToString(spec), ContentType.Application.Json)
+    //         }
+    //         get(openApiConfig.uiPath) {
+    //             call.respondText(generateSwaggerUiHtml(openApiConfig.path, openApiConfig.title), ContentType.Text.Html)
+    //         }
+    //     }
+
         registrations.forEach { reg ->
             val table = reg.table
             val basePath = "/api/${reg.path}"
@@ -139,7 +157,8 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
             if (!reg.readOnly) {
                 post("$basePath/") {
                     call.restRespond {
-                        val body = call.receive<JsonObject>()
+                        var body = call.receive<JsonObject>()
+                        body = reg.beforeCreate?.invoke(call, body) ?: body
                         val (errors, values) = parseBody(body, columnMap) {
                             it in pkCols && it.columnType is AutoIncColumnType<*>
                         }
@@ -155,6 +174,7 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                             table.insert { row -> values.forEach { (col, v) -> setCol(row, col, v) } }
                         }
                         val ids = pkCols.map { serializerFor(it, customSerializers).toJson(insertResult.get(it)) }
+                        reg.afterCreate?.invoke(call, JsonArray(ids))
                         val result = buildJsonObject {
                             if (ids.size == 1) put("id", ids[0])
                             else put("id", JsonArray(ids))
@@ -169,7 +189,9 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                 }
 
                 suspend fun ApplicationCall.updateEntity(pkValues: List<Any?>) {
-                    val body = receive<JsonObject>()
+                    val idStr = pkValues.joinToString(",")
+                    var body = receive<JsonObject>()
+                    body = reg.beforeUpdate?.invoke(this@updateEntity, idStr, body) ?: body
                     val (errors, values) = parseBody(body, columnMap) { it in pkCols }
                     if (errors.isNotEmpty()) {
                         respondFieldErrors(errors, HttpStatusCode.BadRequest)
@@ -187,6 +209,7 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                     if (updated == 0) {
                         respondError("Not found", HttpStatusCode.NotFound)
                     } else {
+                        reg.afterUpdate?.invoke(this@updateEntity, idStr)
                         val result = buildJsonObject { put("status", JsonPrimitive("updated")) }
                         respondText(Json.encodeToString(result), ContentType.Application.Json)
                     }
@@ -224,12 +247,19 @@ fun KtoriteConfig.restFramework(block: RestConfig.() -> Unit) {
                 delete("$basePath/{id}") {
                     call.restRespond {
                         val pkValues = call.parsePkValues(pkCols) ?: return@restRespond
+                        val idStr = pkValues.joinToString(",")
+                        val allowed = reg.beforeDelete?.invoke(call, idStr) ?: true
+                        if (!allowed) {
+                            call.respondError("Delete rejected by hook", HttpStatusCode.Forbidden)
+                            return@restRespond
+                        }
                         val deleted = dbQuery {
                             table.deleteWhere { pkCols eqValues pkValues }
                         }
                         if (deleted == 0) {
                             call.respondError("Not found", HttpStatusCode.NotFound)
                         } else {
+                            reg.afterDelete?.invoke(call, idStr)
                             val result = buildJsonObject { put("status", JsonPrimitive("deleted")) }
                             call.respondText(Json.encodeToString(result), ContentType.Application.Json)
                         }

@@ -3,11 +3,19 @@ package org.ktorite.rest
 import org.jetbrains.exposed.v1.core.ColumnType
 import org.jetbrains.exposed.v1.core.Table
 
+data class OpenApiConfig(
+    var path: String = "/api/openapi.json",
+    var uiPath: String = "/docs",
+    var title: String = "Auto-generated REST API",
+    var version: String = "1.0.0"
+)
+
+
 class RestConfig(models: List<Table>) {
     @PublishedApi internal val registeredModels = models
     @PublishedApi internal val registrations = mutableListOf<ApiRegistration>()
     @PublishedApi internal val serializers = mutableMapOf<Class<*>, ColumnSerializer>()
-
+    @PublishedApi internal var openApiConfig: OpenApiConfig? = null
 
     /**
      *  Creates a default [ApiRegistration] for every registered model.
@@ -37,5 +45,9 @@ class RestConfig(models: List<Table>) {
      */
     inline fun <reified T : ColumnType<*>> registerSerializer(serializer: ColumnSerializer) {
         serializers[T::class.java] = serializer
+    }
+
+    fun openApi(block: OpenApiConfig.() -> Unit = {}) {
+        openApiConfig = OpenApiConfig().apply(block)
     }
 }
